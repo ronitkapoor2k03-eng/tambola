@@ -1,0 +1,91 @@
+def generate_proper_ticket():
+    """Generate a VALID Tambola ticket"""
+    import random
+    
+    # Column ranges
+    col_ranges = [
+        list(range(1, 10)),      # Column 1: 1-9
+        list(range(10, 20)),     # Column 2: 10-19
+        list(range(20, 30)),     # Column 3: 20-29
+        list(range(30, 40)),     # Column 4: 30-39
+        list(range(40, 50)),     # Column 5: 40-49
+        list(range(50, 60)),     # Column 6: 50-59
+        list(range(60, 70)),     # Column 7: 60-69
+        list(range(70, 80)),     # Column 8: 70-79
+        list(range(80, 91))      # Column 9: 80-90
+    ]
+    
+    # Create empty ticket
+    ticket = [[0, 0, 0, 0, 0, 0, 0, 0, 0] for _ in range(3)]
+    
+    # Simple column filling - exactly 2 numbers per column first
+    column_numbers = []
+    for col in range(9):
+        # Pick 2 numbers from each column
+        numbers = sorted(random.sample(col_ranges[col], 2))
+        column_numbers.append(numbers)
+    
+    # Need 15 numbers total, so 3 columns will get 3 numbers
+    extra_cols = random.sample(range(9), 3)
+    for col in extra_cols:
+        # Add a third number to these columns
+        available = [n for n in col_ranges[col] if n not in column_numbers[col]]
+        third_num = random.choice(available)
+        column_numbers[col].append(third_num)
+        column_numbers[col].sort()
+    
+    # Place numbers in rows (each column's numbers go top to bottom)
+    for col in range(9):
+        num_count = len(column_numbers[col])
+        rows = random.sample([0, 1, 2], num_count)
+        rows.sort()
+        for i, row in enumerate(rows):
+            ticket[row][col] = column_numbers[col][i]
+    
+    # Ensure each row has exactly 5 numbers
+    for row in range(3):
+        current_numbers = [ticket[row][col] for col in range(9) if ticket[row][col] != 0]
+        
+        # If too many, remove some
+        while len(current_numbers) > 5:
+            cols_with_num = [col for col in range(9) if ticket[row][col] != 0]
+            remove_col = random.choice(cols_with_num)
+            ticket[row][remove_col] = 0
+            current_numbers = [ticket[row][col] for col in range(9) if ticket[row][col] != 0]
+        
+        # If too few, add numbers from empty columns
+        while len(current_numbers) < 5:
+            empty_cols = [col for col in range(9) if ticket[row][col] == 0]
+            if not empty_cols:
+                break
+            add_col = random.choice(empty_cols)
+            
+            # Find a number not already used in this column
+            used = [ticket[r][add_col] for r in range(3) if ticket[r][add_col] != 0]
+            available = [n for n in col_ranges[add_col] if n not in used]
+            
+            if available:
+                ticket[row][add_col] = random.choice(available)
+                current_numbers = [ticket[row][col] for col in range(9) if ticket[row][col] != 0]
+    
+    # Sort each column top to bottom
+    for col in range(9):
+        col_values = []
+        col_rows = []
+        for row in range(3):
+            if ticket[row][col] != 0:
+                col_values.append(ticket[row][col])
+                col_rows.append(row)
+        
+        # Sort values and their rows
+        sorted_pairs = sorted(zip(col_values, col_rows))
+        
+        # Clear column
+        for row in range(3):
+            ticket[row][col] = 0
+        
+        # Place back in sorted order
+        for i, (val, row) in enumerate(sorted_pairs):
+            ticket[row][col] = val
+    
+    return ticket
