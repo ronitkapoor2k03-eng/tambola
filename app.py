@@ -18,7 +18,7 @@ st.markdown("""
         background-color: #f0f2f6;
     }
     
-    /* House Board Styling */
+    /* House Board Styling - 10x9 grid */
     .house-board {
         background: white;
         padding: 20px;
@@ -38,17 +38,18 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 70px;
-        height: 60px;
+        width: 65px;
+        height: 55px;
         margin: 2px;
         text-align: center;
         border-radius: 8px;
         font-weight: bold;
-        font-size: 16px;
+        font-size: 14px;
         cursor: default;
         transition: all 0.2s;
     }
     
+    /* Colors based on tens */
     .num-1 { background-color: #FF6B6B; color: white; }
     .num-2 { background-color: #FFA07A; color: white; }
     .num-3 { background-color: #FFD93D; color: #333; }
@@ -89,11 +90,6 @@ st.markdown("""
         justify-content: space-between;
     }
     
-    .player-name {
-        font-size: 16px;
-        font-weight: 500;
-    }
-    
     .host-badge {
         background-color: #ff9800;
         color: white;
@@ -121,7 +117,6 @@ st.markdown("""
         margin-left: 8px;
     }
     
-    /* Chat Styling */
     .chat-message {
         background-color: #f8f9fa;
         padding: 8px 12px;
@@ -130,7 +125,6 @@ st.markdown("""
         border-left: 3px solid #007bff;
     }
     
-    /* Progress Box */
     .progress-box {
         background: white;
         padding: 15px;
@@ -188,7 +182,7 @@ def init_session():
             'chat_messages': [],
             'game_completed': False,
             'show_progress': True,
-            'valid_rooms': {}  # Store valid room codes with host info
+            'valid_rooms': {}
         }
     if 'current_player' not in st.session_state:
         st.session_state.current_player = None
@@ -297,16 +291,21 @@ def check_full_house(ticket, marked):
     all_numbers = [n for row in ticket for n in row if n != 0]
     return all(n in marked for n in all_numbers)
 
-def verify_win(ticket, marked, win_type):
-    if win_type == "Jaldi 5 (Row 1)":
-        row_numbers = [n for n in ticket[0] if n != 0][:5]
-        return all(n in marked for n in row_numbers)
-    elif win_type == "Jaldi 5 (Row 2)":
-        row_numbers = [n for n in ticket[1] if n != 0][:5]
-        return all(n in marked for n in row_numbers)
-    elif win_type == "Jaldi 5 (Row 3)":
-        row_numbers = [n for n in ticket[2] if n != 0][:5]
-        return all(n in marked for n in row_numbers)
+def check_jaldi5(ticket, marked, last_called_number=None):
+    """Check if player has 5 marked numbers (Jaldi 5)"""
+    all_numbers = [n for row in ticket for n in row if n != 0]
+    marked_numbers = [n for n in all_numbers if n in marked]
+    
+    if len(marked_numbers) == 5:
+        if last_called_number:
+            # Last number must match the called number
+            return last_called_number in marked_numbers and marked_numbers[-1] == last_called_number
+        return True
+    return False
+
+def verify_win(ticket, marked, win_type, last_called_number=None):
+    if win_type == "Jaldi 5":
+        return check_jaldi5(ticket, marked, last_called_number)
     elif win_type == "Top Line":
         return check_line(ticket, marked, 0)
     elif win_type == "Middle Line":
@@ -319,7 +318,7 @@ def verify_win(ticket, marked, win_type):
         return check_full_house(ticket, marked)
     return False
 
-def computer_claim_wins(player_name, player_data, game_state):
+def computer_claim_wins(player_name, player_data, game_state, last_called_number):
     """Computer automatically claims wins when achieved"""
     ticket = player_data['ticket']
     marked = player_data['marked']
@@ -327,12 +326,10 @@ def computer_claim_wins(player_name, player_data, game_state):
     
     wins_to_claim = []
     
-    # Check Jaldi 5
-    for row in range(3):
-        win_name = f"Jaldi 5 (Row {row+1})"
-        if win_name not in won_patterns:
-            if verify_win(ticket, marked, win_name):
-                wins_to_claim.append(win_name)
+    # Check Jaldi 5 (first 5 numbers anywhere on ticket)
+    if "Jaldi 5" not in won_patterns:
+        if check_jaldi5(ticket, marked, last_called_number):
+            wins_to_claim.append("Jaldi 5")
     
     # Check lines
     line_names = ["Top Line", "Middle Line", "Bottom Line"]
@@ -419,26 +416,25 @@ if not st.session_state.current_player:
     with col1:
         st.markdown("### 🎯 How to Play")
         st.markdown("""
-        1. **Play with friends OR play solo vs computer**
-        2. **Click numbers on your ticket** when called
-        3. **Claim your win** using claim buttons
+        1. **Create room or play vs computer**
+        2. **Click numbers on your ticket** (anytime!)
+        3. **Claim wins** when you complete patterns
         4. **Wrong claim = Disqualification!**
         """)
     with col2:
         st.markdown("### 🏆 Winning Patterns")
         st.markdown("""
-        • **Jaldi 5** - First 5 in any row
+        • **Jaldi 5** - First 5 numbers anywhere
         • **Top/Middle/Bottom Line**
         • **Four Corners**
         • **Full House**
         """)
     with col3:
-        st.markdown("### 🎮 Game Modes")
+        st.markdown("### ⚠️ Important")
         st.markdown("""
-        • **Multiplayer** - Create room, share code
-        • **VS Computer** - Play against AI
-        • **Computer auto-claims** wins
-        • **Watch computer's progress**
+        • **Jaldi 5 requires last number match!**
+        • **Claim only if you actually won!**
+        • **False claim = Disqualification**
         """)
 
 elif not st.session_state.joined_room:
@@ -455,6 +451,10 @@ elif not st.session_state.joined_room:
         with col_create:
             if st.button("🏠 Create Room", use_container_width=True):
                 room_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+                # Store the room in valid_rooms
+                valid_rooms = st.session_state.game_state.get('valid_rooms', {})
+                valid_rooms[room_code] = st.session_state.current_player
+                
                 st.session_state.game_state = {
                     'room_code': room_code,
                     'host': st.session_state.current_player,
@@ -465,7 +465,7 @@ elif not st.session_state.joined_room:
                     'chat_messages': [],
                     'game_completed': False,
                     'show_progress': True,
-                    'valid_rooms': {room_code: st.session_state.current_player}
+                    'valid_rooms': valid_rooms
                 }
                 st.session_state.game_state['players'][st.session_state.current_player] = {
                     'name': st.session_state.current_player,
@@ -483,10 +483,8 @@ elif not st.session_state.joined_room:
         with col_join:
             room_code_input = st.text_input("Enter Room Code:", max_chars=6).upper()
             if st.button("🔍 Join Room", use_container_width=True) and room_code_input:
-                # Check if room exists in valid_rooms
                 valid_rooms = st.session_state.game_state.get('valid_rooms', {})
                 if room_code_input in valid_rooms:
-                    # Create new game state for joiner
                     st.session_state.game_state = {
                         'room_code': room_code_input,
                         'host': valid_rooms[room_code_input],
@@ -517,11 +515,13 @@ elif not st.session_state.joined_room:
     with col2:
         st.markdown("### 🌍 Worldwide Mode")
         st.markdown("Play against a random global player")
-        st.info("💡 Connect with a random player from around the world!")
         
         if st.button("🎮 Find Random Opponent", use_container_width=True, type="primary"):
             room_code = "GLOBAL_" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
             computer_name = "Global_Player_" + ''.join(random.choices(string.digits, k=3))
+            
+            valid_rooms = st.session_state.game_state.get('valid_rooms', {})
+            valid_rooms[room_code] = st.session_state.current_player
             
             st.session_state.game_state = {
                 'room_code': room_code,
@@ -533,10 +533,9 @@ elif not st.session_state.joined_room:
                 'chat_messages': [],
                 'game_completed': False,
                 'show_progress': True,
-                'valid_rooms': {room_code: st.session_state.current_player}
+                'valid_rooms': valid_rooms
             }
             
-            # Add human player
             st.session_state.game_state['players'][st.session_state.current_player] = {
                 'name': st.session_state.current_player,
                 'ticket': generate_proper_ticket(),
@@ -547,7 +546,6 @@ elif not st.session_state.joined_room:
                 'won_patterns': []
             }
             
-            # Add computer opponent
             st.session_state.game_state['players'][computer_name] = {
                 'name': computer_name,
                 'ticket': generate_proper_ticket(),
@@ -567,42 +565,28 @@ else:
     game = st.session_state.game_state
     current_player_data = game['players'].get(st.session_state.current_player)
     
-    # Show room info with live player count
+    # Show room info
     st.markdown(f"## 🎲 Room: **{game['room_code']}**")
     
-    # Live players list - Host can see who joined
+    # Live players list
     st.markdown("### 👥 Live Players in Room")
     st.markdown(f'<div class="live-players">🎮 <strong>{len(game["players"])} Player(s) connected</strong><br>', unsafe_allow_html=True)
     for player_name, player_data in game['players'].items():
         host_tag = " 👑 HOST" if player_name == game['host'] else ""
         winner_tag = " 🏆 WINNER" if player_data.get('is_winner', False) else ""
         computer_tag = " 🤖 AI" if player_data.get('is_computer', False) else ""
-        st.markdown(f'• {player_name}{computer_tag}{host_tag}{winner_tag}', unsafe_allow_html=True)
+        disqualified_tag = " ❌ DQ" if player_data.get('is_disqualified', False) else ""
+        st.markdown(f'• {player_name}{computer_tag}{host_tag}{winner_tag}{disqualified_tag}', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Show computer stats if playing with computer
+    # Computer stats
     computer_players = [p for p in game['players'].values() if p.get('is_computer', False)]
     if computer_players and game['game_started']:
         with st.expander("🤖 Opponent's Progress", expanded=True):
             for computer in computer_players:
-                st.markdown(f'<div class="computer-stats">🌍 <strong>{computer["name"]}</strong><br>✓ Numbers Marked: {len(computer["marked"])}/15<br>🏆 Patterns Won: {len(computer["won_patterns"])}</div>', unsafe_allow_html=True)
-                
-                # Show computer's ticket (optional - can see opponent's progress)
-                if st.checkbox(f"Show {computer['name']}'s ticket"):
-                    comp_ticket = computer['ticket']
-                    comp_marked = computer['marked']
-                    st.markdown("**Opponent's Ticket:**")
-                    for row in range(3):
-                        cols_display = st.columns(9)
-                        for col in range(9):
-                            num = comp_ticket[row][col]
-                            if num != 0:
-                                if num in comp_marked:
-                                    cols_display[col].markdown(f'<div style="background-color:#28a745; color:white; padding:10px; text-align:center; border-radius:5px;">✓</div>', unsafe_allow_html=True)
-                                else:
-                                    cols_display[col].markdown(f'<div style="background-color:#f8f9fa; padding:10px; text-align:center; border-radius:5px;">{num}</div>', unsafe_allow_html=True)
-                            else:
-                                cols_display[col].markdown(f'<div style="background-color:#f8f9fa; padding:10px; text-align:center; border-radius:5px; color:#ccc;">-</div>', unsafe_allow_html=True)
+                all_numbers = [n for row in computer['ticket'] for n in row if n != 0]
+                marked_count = len(computer['marked'])
+                st.markdown(f'<div class="computer-stats">🌍 <strong>{computer["name"]}</strong><br>✓ Numbers Marked: {marked_count}/15<br>🏆 Patterns Won: {len(computer["won_patterns"])}</div>', unsafe_allow_html=True)
     
     if current_player_data and current_player_data.get('is_winner', False):
         st.success(f"🏆🏆🏆 {st.session_state.current_player}, you are a WINNER! 🏆🏆🏆")
@@ -621,14 +605,14 @@ else:
     if game['game_started']:
         st.markdown("---")
         
-        # Main game area
         col_left, col_right = st.columns([2, 1])
         
         with col_left:
-            # House Board
+            # House Board - 10 rows x 9 columns (like real Tambola)
             st.markdown('<div class="section-header">🏠 TAMBOLA HOUSE BOARD</div>', unsafe_allow_html=True)
             st.markdown('<div class="house-board">', unsafe_allow_html=True)
             
+            # Display 10 rows of 9 numbers each (1-90)
             for row in range(10):
                 cols_html = '<div class="board-row">'
                 for col in range(9):
@@ -654,7 +638,7 @@ else:
             else:
                 st.info("No numbers called yet. Host will call numbers!")
             
-            # Player's Ticket - ALL NUMBERS CLICKABLE (removed the instruction text)
+            # Player's Ticket - ALL NUMBERS CLICKABLE
             if current_player_data and not current_player_data.get('is_winner', False) and not current_player_data.get('is_disqualified', False):
                 st.markdown('<div class="section-header">🎟️ YOUR TICKET</div>', unsafe_allow_html=True)
                 st.markdown('<div class="ticket-container">', unsafe_allow_html=True)
@@ -662,7 +646,7 @@ else:
                 ticket = current_player_data['ticket']
                 marked = current_player_data['marked']
                 
-                # Display ticket as clickable buttons - ALL NUMBERS CLICKABLE
+                # Display ticket - ALL numbers clickable
                 for row in range(3):
                     cols = st.columns(9)
                     for col in range(9):
@@ -671,14 +655,11 @@ else:
                             if num in marked:
                                 cols[col].markdown(f'<div style="background-color:#28a745; color:white; padding:15px; text-align:center; border-radius:8px; font-weight:bold;">✓ {num}</div>', unsafe_allow_html=True)
                             else:
-                                # All numbers are clickable
+                                # All numbers are clickable - player can mark any number
                                 if cols[col].button(f"{num}", key=f"mark_{row}_{col}_{num}", use_container_width=True):
-                                    if num in game['called_numbers']:
-                                        current_player_data['marked'].append(num)
-                                        current_player_data['history'].append(num)
-                                        st.rerun()
-                                    else:
-                                        st.warning(f"⚠️ Number {num} has not been called yet! Wait for it to be called.")
+                                    current_player_data['marked'].append(num)
+                                    current_player_data['history'].append(num)
+                                    st.rerun()
                         else:
                             cols[col].markdown(f'<div style="background-color:#f8f9fa; padding:15px; text-align:center; border-radius:8px; color:#ccc;">-</div>', unsafe_allow_html=True)
                 
@@ -701,14 +682,16 @@ else:
                 col_claim1, col_claim2, col_claim3 = st.columns(3)
                 
                 with col_claim1:
-                    if st.button("🎯 Claim Jaldi 5 - Row 1", use_container_width=True):
-                        if verify_win(ticket, marked, "Jaldi 5 (Row 1)"):
-                            if "Jaldi 5 (Row 1)" not in current_player_data['won_patterns']:
-                                current_player_data['won_patterns'].append("Jaldi 5 (Row 1)")
+                    # Jaldi 5 - First 5 numbers anywhere on ticket
+                    if st.button("🎯 Claim Jaldi 5", use_container_width=True):
+                        last_called = game['called_numbers'][-1] if game['called_numbers'] else None
+                        if verify_win(ticket, marked, "Jaldi 5", last_called):
+                            if "Jaldi 5" not in current_player_data['won_patterns']:
+                                current_player_data['won_patterns'].append("Jaldi 5")
                                 st.success("🎉 Valid claim! You won Jaldi 5!")
                                 game['chat_messages'].append({
                                     "player": "🎉 SYSTEM",
-                                    "message": f"{st.session_state.current_player} won Jaldi 5 (Row 1)! 🎉",
+                                    "message": f"{st.session_state.current_player} won Jaldi 5! 🎉",
                                     "time": datetime.now()
                                 })
                                 st.balloons()
@@ -722,49 +705,6 @@ else:
                             })
                         st.rerun()
                     
-                    if st.button("🎯 Claim Jaldi 5 - Row 2", use_container_width=True):
-                        if verify_win(ticket, marked, "Jaldi 5 (Row 2)"):
-                            if "Jaldi 5 (Row 2)" not in current_player_data['won_patterns']:
-                                current_player_data['won_patterns'].append("Jaldi 5 (Row 2)")
-                                st.success("🎉 Valid claim! You won Jaldi 5!")
-                                game['chat_messages'].append({
-                                    "player": "🎉 SYSTEM",
-                                    "message": f"{st.session_state.current_player} won Jaldi 5 (Row 2)! 🎉",
-                                    "time": datetime.now()
-                                })
-                                st.balloons()
-                        else:
-                            current_player_data['is_disqualified'] = True
-                            st.error("❌ FALSE CLAIM! You have been DISQUALIFIED!")
-                            game['chat_messages'].append({
-                                "player": "⚠️ SYSTEM",
-                                "message": f"{st.session_state.current_player} made a false claim and was DISQUALIFIED!",
-                                "time": datetime.now()
-                            })
-                        st.rerun()
-                    
-                    if st.button("🎯 Claim Jaldi 5 - Row 3", use_container_width=True):
-                        if verify_win(ticket, marked, "Jaldi 5 (Row 3)"):
-                            if "Jaldi 5 (Row 3)" not in current_player_data['won_patterns']:
-                                current_player_data['won_patterns'].append("Jaldi 5 (Row 3)")
-                                st.success("🎉 Valid claim! You won Jaldi 5!")
-                                game['chat_messages'].append({
-                                    "player": "🎉 SYSTEM",
-                                    "message": f"{st.session_state.current_player} won Jaldi 5 (Row 3)! 🎉",
-                                    "time": datetime.now()
-                                })
-                                st.balloons()
-                        else:
-                            current_player_data['is_disqualified'] = True
-                            st.error("❌ FALSE CLAIM! You have been DISQUALIFIED!")
-                            game['chat_messages'].append({
-                                "player": "⚠️ SYSTEM",
-                                "message": f"{st.session_state.current_player} made a false claim and was DISQUALIFIED!",
-                                "time": datetime.now()
-                            })
-                        st.rerun()
-                
-                with col_claim2:
                     if st.button("📏 Claim Top Line", use_container_width=True):
                         if verify_win(ticket, marked, "Top Line"):
                             if "Top Line" not in current_player_data['won_patterns']:
@@ -785,7 +725,8 @@ else:
                                 "time": datetime.now()
                             })
                         st.rerun()
-                    
+                
+                with col_claim2:
                     if st.button("📏 Claim Middle Line", use_container_width=True):
                         if verify_win(ticket, marked, "Middle Line"):
                             if "Middle Line" not in current_player_data['won_patterns']:
@@ -894,15 +835,16 @@ else:
                 ticket = current_player_data['ticket']
                 marked = current_player_data['marked']
                 
-                # Jaldi 5 progress
-                for row in range(3):
-                    row_numbers = [num for num in ticket[row] if num != 0][:5]
-                    marked_count = len([num for num in row_numbers if num in marked])
-                    remaining = 5 - marked_count
-                    if remaining == 0:
-                        st.success(f"🎯 Jaldi 5 (Row {row+1}): ✅ READY TO CLAIM!")
-                    else:
-                        st.info(f"🎯 Jaldi 5 (Row {row+1}): {remaining} more needed")
+                all_numbers = [n for row in ticket for n in row if n != 0]
+                marked_count = len(marked)
+                remaining = 15 - marked_count
+                
+                st.info(f"🎯 Total Numbers Marked: {marked_count}/15")
+                
+                if marked_count == 5:
+                    st.success(f"🎯 Jaldi 5: ✅ READY TO CLAIM! (Last number must match called number)")
+                else:
+                    st.info(f"🎯 Jaldi 5: {5 - marked_count} more needed")
                 
                 # Lines
                 for line_num in range(3):
@@ -911,8 +853,8 @@ else:
                     if is_complete:
                         st.success(f"📏 {line_name}: ✅ READY TO CLAIM!")
                     else:
-                        remaining = len([n for n in ticket[line_num] if n != 0 and n not in marked])
-                        st.info(f"📏 {line_name}: {remaining} more needed")
+                        remaining_line = len([n for n in ticket[line_num] if n != 0 and n not in marked])
+                        st.info(f"📏 {line_name}: {remaining_line} more needed")
                 
                 # Four corners
                 corners_complete = check_four_corners(ticket, marked)
@@ -921,16 +863,14 @@ else:
                 else:
                     corners = [ticket[0][0], ticket[0][8], ticket[2][0], ticket[2][8]]
                     corners = [c for c in corners if c != 0]
-                    remaining = len([c for c in corners if c not in marked])
-                    st.info(f"🔲 Four Corners: {remaining} more needed")
+                    remaining_corners = len([c for c in corners if c not in marked])
+                    st.info(f"🔲 Four Corners: {remaining_corners} more needed")
                 
                 # Full house
                 fh_complete = check_full_house(ticket, marked)
                 if fh_complete:
                     st.success(f"🏆 Full House: ✅ READY TO CLAIM!")
                 else:
-                    all_numbers = [n for row in ticket for n in row if n != 0]
-                    remaining = len([n for n in all_numbers if n not in marked])
                     st.info(f"🏆 Full House: {remaining} more needed")
                 
                 st.markdown('</div>', unsafe_allow_html=True)
@@ -968,7 +908,7 @@ else:
                         # Computer auto-claims wins after each number
                         for player_name, player_data in game['players'].items():
                             if player_data.get('is_computer', False) and not player_data.get('is_winner', False) and not player_data.get('is_disqualified', False):
-                                computer_claim_wins(player_name, player_data, game)
+                                computer_claim_wins(player_name, player_data, game, number)
                         
                         st.rerun()
                     else:
